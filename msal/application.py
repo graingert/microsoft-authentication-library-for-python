@@ -139,6 +139,7 @@ class ClientApplication(object):
                 # This way, it holds the same positional param place for PCA,
                 # when we would eventually want to add this feature to PCA in future.
             exclude_scopes=None,
+            http_cache=None,
             ):
         """Create an instance of application.
 
@@ -305,6 +306,46 @@ class ClientApplication(object):
             If that is unnecessary or undesirable for your app,
             now you can use this parameter to supply an exclusion list of scopes,
             such as ``exclude_scopes = ["offline_access"]``.
+
+        :param dict http_cache:
+            MSAL has long been caching tokens in the ``token_cache``.
+            Recently, MSAL also introduced a concept of ``http_cache``,
+            by automatically caching some finite amount of non-token http responses,
+            so that *long-lived*
+            ``PublicClientApplication`` and ``ConfidentialClientApplication``
+            would be more performant and responsive in some situations.
+
+            This ``http_cache`` parameter accepts any dict-like object.
+            If not provided, MSAL will use an in-memory dict.
+
+            If your app is a command-line app (CLI),
+            you would want to persist your http_cache across different CLI runs.
+            The Python standard library's ``shelve`` module comes in handy. Recipe::
+
+                # Just add the following 3 lines at the beginning of your CLI script
+                import sys, atexit, shelve
+                persisted_http_cache = shelve.open(sys.argv[0] + ".http_cache")
+                atexit.register(persisted_http_cache.close)
+
+                # And then you can implement your app as you normally would
+                app = msal.PublicClientApplication(
+                    "your_client_id",
+                    ...,
+                    http_cache=persisted_http_cache,  # Utilize persisted_http_cache
+                    ...,
+                    #token_cache=...,  # You may combine the old token_cache trick
+                        # Please refer to token_cache recipe at
+                        # https://msal-python.readthedocs.io/en/latest/#msal.SerializableTokenCache
+                    )
+                app.acquire_token_interactive(["your", "scope"], ...)
+
+            Content inside ``http_cache`` are cheap to obtain.
+            There is no need to share them among different apps.
+
+            Content inside ``http_cache`` will contain no tokens nor
+            Personally Identifiable Information (PII). Encryption is unnecessary.
+
+            New in version 1.15.0.
         """
         self.client_id = client_id
         self.client_credential = client_credential
@@ -339,7 +380,7 @@ class ClientApplication(object):
             self.http_client.mount("https://", a)
         self.http_client = ThrottledHttpClient(
             self.http_client,
-            {}  # Hard code an in-memory cache, for now
+            {} if http_cache is None else http_cache,  # Default to an in-memory dict
             )
 
         self.app_name = app_name
