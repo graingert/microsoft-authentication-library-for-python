@@ -583,6 +583,7 @@ class Client(BaseClient):  # We choose to implement all 4 grants in 1 class
             auth_params=None,
             auth_uri_callback=None,
             browser_name=None,
+            listen_port=None,
             **kwargs):
         """A native app can use this method to obtain token via a local browser.
 
@@ -628,18 +629,25 @@ class Client(BaseClient):  # We choose to implement all 4 grants in 1 class
         _redirect_uri = urlparse(redirect_uri or "http://127.0.0.1:0")
         if not _redirect_uri.hostname:
             raise ValueError("redirect_uri should contain hostname")
-        if _redirect_uri.scheme == "https":
-            raise ValueError("Our local loopback server will not use https")
-        listen_port = _redirect_uri.port if _redirect_uri.port is not None else 80
+        #if _redirect_uri.scheme == "https":
+        #    raise ValueError("Our local loopback server will not use https")
+        if listen_port is None:
+            listen_port = _redirect_uri.port if _redirect_uri.port is not None else 80
             # This implementation allows port-less redirect_uri to mean port 80
         try:
             with _AuthCodeReceiver(port=listen_port) as receiver:
                 flow = self.initiate_auth_code_flow(
-                    redirect_uri="http://{host}:{port}".format(
-                            host=_redirect_uri.hostname, port=receiver.get_port(),
-                        ) if _redirect_uri.port is not None else "http://{host}".format(
-                            host=_redirect_uri.hostname
-                        ),  # This implementation uses port-less redirect_uri as-is
+                    redirect_uri=redirect_uri if _redirect_uri.port != 0
+                        else "http://{host}:{port}".format(
+                            host=_redirect_uri.hostname,
+                            port=receiver.get_port(),
+                            ),
+                    #redirect_uri="http://{host}:{port}".format(
+                    #        host=_redirect_uri.hostname,
+                    #        port=_redirect_uri.port or receiver.get_port(),
+                    #    ) if _redirect_uri.port is not None else "http://{host}".format(
+                    #        host=_redirect_uri.hostname
+                    #    ),  # This implementation uses port-less redirect_uri as-is
                     scope=_scope_set(scope) | _scope_set(extra_scope_to_consent),
                     **(auth_params or {}))
                 auth_response = receiver.get_auth_response(

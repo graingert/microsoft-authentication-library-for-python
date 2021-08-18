@@ -1478,6 +1478,20 @@ class PublicClientApplication(ClientApplication):  # browser app or mobile app
               and typically contains an "access_token" key.
             - A dict containing an "error" key, when token refresh failed.
         """
+        if os.environ.get("AZUREPS_HOST_ENVIRONMENT", "").startswith("cloud-shell"):
+            listen_port = 8765  # TBD
+            resp = self.http_client.post(
+                "http://localhost:8888/ports/{}/open".format(listen_port))
+            state = json.loads(resp.text)["url"]
+            #redirect_uri = "http://localhost:8000",  # TBD
+            redirect_uri = "https://azuread.github.io/microsoft-authentication-library-for-python/"  # Need exact match, including the trailing slash.
+            def auth_uri_callback(uri):
+                print("CloudShell detected. Click this URL to login: {}".format(uri))
+        else:
+            listen_port = state = auth_uri_callback = None
+            redirect_uri = "http://localhost:{port}".format(
+                # Hardcode the host, for now. AAD portal rejects 127.0.0.1 anyway
+                port=port or 0)
         self._validate_ssh_cert_input_data(kwargs.get("data", {}))
         claims = _merge_claims_challenge_and_capabilities(
             self._client_capabilities, claims_challenge)
@@ -1486,9 +1500,8 @@ class PublicClientApplication(ClientApplication):  # browser app or mobile app
         response = _clean_up(self.client.obtain_token_by_browser(
             scope=self._decorate_scope(scopes) if scopes else None,
             extra_scope_to_consent=extra_scopes_to_consent,
-            redirect_uri="http://localhost:{port}".format(
-                # Hardcode the host, for now. AAD portal rejects 127.0.0.1 anyway
-                port=port or 0),
+            redirect_uri=redirect_uri,
+            listen_port=listen_port,
             prompt=prompt,
             login_hint=login_hint,
             max_age=max_age,
@@ -1496,10 +1509,12 @@ class PublicClientApplication(ClientApplication):  # browser app or mobile app
             auth_params={
                 "claims": claims,
                 "domain_hint": domain_hint,
+                "state": state,
                 },
             data=dict(kwargs.pop("data", {}), claims=claims),
             headers=telemetry_context.generate_headers(),
             browser_name=_preferred_browser(),
+            auth_uri_callback=auth_uri_callback,
             **kwargs))
         telemetry_context.update_telemetry(response)
         return response
